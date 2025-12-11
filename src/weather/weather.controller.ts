@@ -1,6 +1,6 @@
 // src/weather/weather.controller.ts
 import { Controller, Get, Query, Req } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags, ApiTooManyRequestsResponse } from '@nestjs/swagger';
 import express from 'express';
 import { WeatherService } from './weather.service';
 import { GetWeatherDto } from './dto/get-weather.dto';
@@ -34,6 +34,9 @@ export class WeatherController {
         },
       },
     },
+  })
+    @ApiTooManyRequestsResponse({
+    description: 'Too many requests from this IP. Try again later.',
   })
   async getWeather(@Query() query: GetWeatherDto, @Req() req: express.Request) {
     const ip =

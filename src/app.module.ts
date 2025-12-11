@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import * as dotenv from 'dotenv';
 import { LoggingModule } from './logging/logging.module';
 import { WeatherModule } from './weather/weather.module';
 import { ProvidersModule } from './providers/providers.module';
-import * as dotenv from 'dotenv';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+
 dotenv.config();
 
 @Module({
@@ -12,12 +15,28 @@ dotenv.config();
       type: 'postgres',
       url: process.env.DATABASE_URL,
       synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
-      autoLoadEntities: true, // entities imported by modules will be picked up
+      autoLoadEntities: true,
       logging: false,
     }),
+
+    // 🔹 Global rate limiting
+   ThrottlerModule.forRoot([
+  {
+    ttl: parseInt(process.env.RATE_LIMIT_TTL ?? '60', 10),
+    limit: parseInt(process.env.RATE_LIMIT_POINTS ?? '30', 10),
+  },
+]),
+
     LoggingModule,
-    WeatherModule,
     ProvidersModule,
+    WeatherModule,
+  ],
+  providers: [
+    // 🔹 Apply throttling guard to all routes (per IP)
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}
