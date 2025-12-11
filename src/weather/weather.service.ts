@@ -1,11 +1,14 @@
-// src/weather/weather.service.ts
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { LoggingService } from '../logging/logging.service';
 import { GetWeatherDto } from './dto/get-weather.dto';
+import { ProviderManagerService } from '../providers/provider-manager.service';
 
 @Injectable()
 export class WeatherService {
-  constructor(private readonly loggingService: LoggingService) {}
+  constructor(
+    private readonly loggingService: LoggingService,
+    private readonly providerManager: ProviderManagerService,
+  ) {}
 
   /**
    * Validates the query according to the task:
@@ -13,54 +16,63 @@ export class WeatherService {
    * - Not both, not none
    */
   private validateQuery(query: GetWeatherDto) {
-    const hasCoords = query.lat !== undefined || query.lon !== undefined;
+    const hasAnyCoords = query.lat !== undefined || query.lon !== undefined;
     const hasBothCoords = query.lat !== undefined && query.lon !== undefined;
     const hasCity = !!query.city;
 
-    if ((hasCoords && hasCity) || (!hasBothCoords && !hasCity)) {
+    if ((hasAnyCoords && hasCity) || (!hasBothCoords && !hasCity)) {
       throw new BadRequestException(
         'Provide either both lat & lon or city, but not both and not incomplete coordinates.',
       );
     }
   }
 
-  /**
-   * For now, this uses a mock provider response.
-   * Later we will delegate to ProviderManager & external APIs.
-   */
   async getWeather(query: GetWeatherDto, ip?: string) {
     this.validateQuery(query);
 
-    // 🔹 Mock "provider" result (we'll replace this with real provider calls)
-    const now = new Date();
-    const providerName = 'mock-provider';
+    const hasCity = !!query.city;
 
-    const response = {
-      provider: providerName,
-      timestamp: now.toISOString(),
-      location: {
-        city: query.city ?? 'Mock City',
-        lat: query.lat ?? 31.95,
-        lon: query.lon ?? 35.9,
-      },
-      weather: {
-        temperature: 25.3,
-        humidity: 60,
-        description: 'clear sky (mock)',
-      },
-    };
+    try {
+      let providerResult;
+      let isFallback = false;
 
-    // 🔹 Log the overall request
-    await this.loggingService.logWeatherRequest({
-      ip,
-      request_payload: query,
-      status: 'success',
-      provider_used: providerName,
-      response_timestamp: now,
-    });
+      if (hasCity) {
+        const r = await this.providerManager.getByCity(query.city!);
+        providerResult = r.result;
+        isFallback = r.isFallback;
+      } else {
+        const r = await this.providerManager.getByCoords(query.lat!, query.lon!);
+        providerResult = r.result;
+        isFallback = r.isFallback;
+      }
 
-    // In future steps, we will also log each provider call via logProviderCall()
+      // Log overall request as success or fallback
+      await this.loggingService.logWeatherRequest({
+        ip,
+        request_payload: query,
+        status: isFallback ? 'fallback' : 'success',
+        provider_used: providerResult.provider,
+        response_timestamp: new Date(providerResult.timestamp),
+      });
 
-    return response;
+      // Return provider result directly
+      return providerResult;
+    } catch (error) {
+      // If all providers failed, we log an error request with an error_id
+      const { error_id } = await this.loggingService.logWeatherRequest({
+        ip,
+        request_payload: query,
+        status: 'error',
+        provider_used: undefined,
+        response_timestamp: undefined,
+      });
+
+      // Return 503 with error id
+      throw new ServiceUnavailableException({
+        statusCode: 503,
+        message: 'Service temporarily unavailable',
+        error_id,
+      });
+    }
   }
 }
