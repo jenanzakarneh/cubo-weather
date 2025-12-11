@@ -6,7 +6,7 @@ import { WeatherModule } from './weather/weather.module';
 import { ProvidersModule } from './providers/providers.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
-
+import { CacheModule } from '@nestjs/cache-manager';
 dotenv.config();
 
 @Module({
@@ -18,14 +18,18 @@ dotenv.config();
       autoLoadEntities: true,
       logging: false,
     }),
-
+     CacheModule.register({
+      isGlobal: true,
+      ttl: parseInt(process.env.CACHE_TTL_SECONDS ?? '300', 10) * 1000,
+      max: 100,
+    }),
     // 🔹 Global rate limiting
-   ThrottlerModule.forRoot([
-  {
-    ttl: parseInt(process.env.RATE_LIMIT_TTL ?? '60', 10),
-    limit: parseInt(process.env.RATE_LIMIT_POINTS ?? '30', 10),
-  },
-]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: parseInt(process.env.RATE_LIMIT_TTL ?? '60', 10),
+        limit: parseInt(process.env.RATE_LIMIT_POINTS ?? '30', 10),
+      },
+    ]),
 
     LoggingModule,
     ProvidersModule,
