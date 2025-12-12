@@ -7,6 +7,8 @@ import { ProvidersModule } from './providers/providers.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
 dotenv.config();
 
 @Module({
@@ -34,6 +36,8 @@ dotenv.config();
     LoggingModule,
     ProvidersModule,
     WeatherModule,
+    UsersModule,
+    AuthModule,
   ],
   providers: [
     // 🔹 Apply throttling guard to all routes (per IP)
