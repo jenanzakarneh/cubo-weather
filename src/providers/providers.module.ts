@@ -1,19 +1,26 @@
 import { Module } from '@nestjs/common';
-import { ProviderManagerService, WEATHER_PROVIDERS } from './provider-manager.service';
 import { LoggingModule } from '../logging/logging.module';
-import { MockProvider } from './mock-provider/mock-provider.service';
+import {
+  ProviderManagerService,
+  WEATHER_PROVIDERS,
+} from './provider-manager.service';
+import { OpenMeteoProvider } from './open-meteo.provider';
+import { OpenWeatherProvider } from './openweather.provider';
 
 @Module({
   imports: [LoggingModule],
   providers: [
-    MockProvider,
     ProviderManagerService,
-    {
+    OpenMeteoProvider,
+    OpenWeatherProvider,    {
       provide: WEATHER_PROVIDERS,
-      useFactory: (mockProvider: MockProvider) => {
-        return [mockProvider];
+      useFactory: (
+        openMeteo: OpenMeteoProvider,
+        openWeather: OpenWeatherProvider,
+      ) => {
+        return [openMeteo, openWeather];
       },
-      inject: [MockProvider],
+      inject: [OpenMeteoProvider, OpenWeatherProvider],
     },
   ],
   exports: [ProviderManagerService],
