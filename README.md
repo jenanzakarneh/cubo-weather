@@ -93,7 +93,7 @@ No local Node.js installation is required.
 ### Steps
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/jenanzakarneh/cubo-weather.git
 cd cubo-weather
 
 cp .env.example .env
