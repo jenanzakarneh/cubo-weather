@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, ServiceUnavailableException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ServiceUnavailableException,
+  Inject,
+} from '@nestjs/common';
 import { LoggingService } from '../logging/logging.service';
 import { GetWeatherDto } from './dto/get-weather.dto';
 import { ProviderManagerService } from '../providers/provider-manager.service';
@@ -10,7 +15,6 @@ export class WeatherService {
     private readonly loggingService: LoggingService,
     private readonly providerManager: ProviderManagerService,
     @Inject(CACHE_MANAGER) private readonly cache: cacheManager.Cache,
-
   ) {}
 
   /**
@@ -31,74 +35,83 @@ export class WeatherService {
   }
 
   async getWeather(query: GetWeatherDto, ip?: string) {
-  this.validateQuery(query);
+    this.validateQuery(query);
 
-  // ---- 1️⃣ Generate cache key
-  const cacheKey = query.city
-    ? `weather:city:${query.city.toLowerCase()}`
-    : `weather:coords:${query.lat},${query.lon}`;
+    // ---- 1️⃣ Generate cache key
+    const cacheKey = query.city
+      ? `weather:city:${query.city.toLowerCase()}`
+      : `weather:coords:${query.lat},${query.lon}`;
 
-  // ---- 2️⃣ Check cache
-  const cached = await this.cache.get<any>(cacheKey);
-  if (cached) {
-    // Log a cached request
-    await this.loggingService.logWeatherRequest({
-      ip,
-      request_payload: query,
-      status: 'success',
-      provider_used: cached.provider,
-      response_timestamp: new Date(cached.timestamp),
-    });
+    // ---- 2️⃣ Check cache
+    const cached = await this.cache.get<any>(cacheKey);
+    if (cached) {
+      // Log a cached request
+      await this.loggingService.logWeatherRequest({
+        ip,
+        request_payload: query,
+        status: 'success',
+        provider_used: cached.provider,
+        response_timestamp: new Date(cached.timestamp),
+      });
 
-    return {
-      ...cached,
-      cached: true, // optional — helpful for debugging
-    };
-  }
-
-  // ---- 3️⃣ Not cached → call providers
-  try {
-    let providerResult;
-    let isFallback = false;
-
-    if (query.city) {
-      const r = await this.providerManager.getByCity(query.city);
-      providerResult = r.result;
-      isFallback = r.isFallback;
-    } else {
-      const r = await this.providerManager.getByCoords(query.lat!, query.lon!);
-      providerResult = r.result;
-      isFallback = r.isFallback;
+      return {
+        ...cached,
+        cached: true, // optional — helpful for debugging
+      };
     }
 
-    // ---- 4️⃣ Save to cache
-    await this.cache.set(cacheKey, providerResult);
+    // ---- 3️⃣ Not cached → call providers
+    try {
+      let providerResult;
+      let isFallback = false;
 
-    // ---- 5️⃣ Log success or fallback
-    await this.loggingService.logWeatherRequest({
-      ip,
-      request_payload: query,
-      status: isFallback ? 'fallback' : 'success',
-      provider_used: providerResult.provider,
-      response_timestamp: new Date(providerResult.timestamp),
-    });
+      if (query.city) {
+        const r = await this.providerManager.getByCity(query.city!, {
+          forceFailProvider: query.forcePrimaryFail ? 'open-meteo' : undefined,
+        });
+        providerResult = r.result;
+        isFallback = r.isFallback;
+      } else {
+        const r = await this.providerManager.getByCoords(
+          query.lat!,
+          query.lon!,
+          {
+            forceFailProvider: query.forcePrimaryFail
+              ? 'open-meteo'
+              : undefined,
+          },
+        );
 
-    return providerResult;
+        providerResult = r.result;
+        isFallback = r.isFallback;
+      }
 
-  } catch (error) {
-    // ---- 6️⃣ Log provider failure
-    const { error_id } = await this.loggingService.logWeatherRequest({
-      ip,
-      request_payload: query,
-      status: 'error',
-    });
+      // ---- 4️⃣ Save to cache
+      await this.cache.set(cacheKey, providerResult);
 
-    throw new ServiceUnavailableException({
-      statusCode: 503,
-      message: 'Service temporarily unavailable',
-      error_id,
-    });
+      // ---- 5️⃣ Log success or fallback
+      await this.loggingService.logWeatherRequest({
+        ip,
+        request_payload: query,
+        status: isFallback ? 'fallback' : 'success',
+        provider_used: providerResult.provider,
+        response_timestamp: new Date(providerResult.timestamp),
+      });
+
+      return providerResult;
+    } catch (error) {
+      // ---- 6️⃣ Log provider failure
+      const { error_id } = await this.loggingService.logWeatherRequest({
+        ip,
+        request_payload: query,
+        status: 'error',
+      });
+
+      throw new ServiceUnavailableException({
+        statusCode: 503,
+        message: 'Service temporarily unavailable',
+        error_id,
+      });
+    }
   }
-}
-
 }
